@@ -12,7 +12,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         window = makeBodyWindow()
 
         let container = CharacterHitView()
-        let hosting = NSHostingView(rootView: rootContent())
+        let hosting = NSHostingView(rootView: BodyRootView())
         hosting.autoresizingMask = [.width, .height]
         hosting.frame = container.bounds
         container.addSubview(hosting)
@@ -21,6 +21,60 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         window.makeKeyAndOrderFront(nil)
         startMouseTracking()
+        startRightClickMonitor()
+        startTripleClickMonitor()
+    }
+
+    /// ARView (RealityKit's render view) sits on top of our container and
+    /// swallows mouse events before they'd ever reach a view-level
+    /// rightMouseDown override, so we catch the right-click at the window
+    /// level instead. This only fires at all when the window isn't
+    /// ignoring mouse events, which — per updateClickability() — is only
+    /// when the cursor is over the character, so no extra position check
+    /// is needed here.
+    private func startRightClickMonitor() {
+        NSEvent.addLocalMonitorForEvents(matching: .rightMouseDown) { [weak self] event in
+            guard event.window === self?.window else { return event }
+            self?.openControlPanel()
+            return event
+        }
+    }
+
+    /// Triple-click on the character opens the control panel. Same
+    /// window-level trick as the right-click monitor — this only fires
+    /// when the cursor is over her, since that's the only time the window
+    /// stops ignoring mouse events at all.
+    private func startTripleClickMonitor() {
+        NSEvent.addLocalMonitorForEvents(matching: .leftMouseDown) { [weak self] event in
+            guard event.window === self?.window, event.clickCount == 3 else { return event }
+            self?.openControlPanel()
+            return event
+        }
+    }
+
+    private var controlPanelWindow: NSWindow?
+
+    private func openControlPanel() {
+        if let controlPanelWindow {
+            controlPanelWindow.makeKeyAndOrderFront(nil)
+            NSApp.activate(ignoringOtherApps: true)
+            return
+        }
+        let panel = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 420, height: 520),
+            styleMask: [.titled, .closable],
+            backing: .buffered,
+            defer: false
+        )
+        panel.title = "Choose Character"
+        panel.isReleasedWhenClosed = false
+        panel.center()
+        panel.contentView = NSHostingView(
+            rootView: ControlPanelView { [weak self] in self?.controlPanelWindow?.close() }
+        )
+        controlPanelWindow = panel
+        panel.makeKeyAndOrderFront(nil)
+        NSApp.activate(ignoringOtherApps: true)
     }
 
     /// Click-through is all-or-nothing per window on macOS, so we flip
@@ -58,16 +112,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             )
         }
         window.ignoresMouseEvents = !clickableRect.contains(mouse)
-    }
-
-    @ViewBuilder
-    private func rootContent() -> some View {
-        if let vrmURL = Bundle.module.url(forResource: "Elmer", withExtension: "vrm"),
-           let idleURL = Bundle.module.url(forResource: "idle-maid", withExtension: "vrma") {
-            CharacterView(vrmURL: vrmURL, idleAnimationURL: idleURL)
-        } else {
-            BodyView()
-        }
     }
 
     private func makeBodyWindow() -> NSWindow {

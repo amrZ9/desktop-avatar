@@ -19,6 +19,8 @@ let package = Package(
             path: "Sources/DesktopAvatar",
             resources: [
                 .copy("Resources/Elmer.vrm"),
+                .copy("Resources/AliciaSolid.vrm"),
+                .copy("Resources/Seed-san.vrm"),
                 .copy("Resources/idle-maid.vrma")
             ]
         )

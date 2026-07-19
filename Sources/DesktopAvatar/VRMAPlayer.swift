@@ -36,33 +36,25 @@ final class VRMAPlayer {
         }
     }
 
-    private var elapsedTime: Float = 0
-
-    func update(deltaTime: Float) {
-        guard animation.duration > 0 else { return }
-        elapsedTime += deltaTime
-        let loopTime = elapsedTime.truncatingRemainder(dividingBy: animation.duration)
-
+    /// Snaps the character into the clip's pose at t=0 (its natural standing
+    /// stance) once, then stops — no continuous per-frame animation. Called
+    /// a single time right after load; there is no update-loop subscription.
+    func settleIntoRestPose() {
         for track in animation.tracks {
             guard let bone = Humanoid<Entity>.Bones(rawValue: track.bone),
                   let boneEntity = vrmEntity.humanoid.node(for: bone)
             else { continue }
-            if let rotations = track.rotations, let targetRest = targetRestRotation[track.bone] {
-                let animated = Self.sample(times: track.times, values: rotations, at: loopTime, interpolate: simd_slerp)
-                let delta = track.sourceRestRotation.inverse * animated
+            if let rotations = track.rotations, let first = rotations.first, let targetRest = targetRestRotation[track.bone] {
+                let delta = track.sourceRestRotation.inverse * first
                 boneEntity.transform.rotation = (targetRest * delta).normalized
             }
-            if let translations = track.translations, let targetRest = targetRestTranslation[track.bone] {
-                let animated = Self.sample(times: track.times, values: translations, at: loopTime) { a, b, t in
-                    a + (b - a) * t
-                }
-                boneEntity.transform.translation = targetRest + (animated - track.sourceRestTranslation)
+            if let translations = track.translations, let first = translations.first, let targetRest = targetRestTranslation[track.bone] {
+                boneEntity.transform.translation = targetRest + (first - track.sourceRestTranslation)
             }
         }
-
         // Bone entities moving isn't enough — VRMEntity caches skin pose in a
         // SkeletalPosesComponent that only refreshes here.
-        vrmEntity.update(at: TimeInterval(deltaTime))
+        vrmEntity.update(at: 0)
     }
 
     private static func sample<Value>(

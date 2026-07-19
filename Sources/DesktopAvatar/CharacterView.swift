@@ -13,6 +13,12 @@ import VRMRealityKit
 struct CharacterView: NSViewRepresentable {
     let vrmURL: URL
     let idleAnimationURL: URL
+    /// Only the desktop body window should drive click-through hit-testing.
+    /// The control panel's own preview uses this same view but must NOT
+    /// overwrite CharacterState.shared with its (different) window's
+    /// coordinates — that was silently breaking desktop hit-testing
+    /// whenever the panel's preview loaded a character after it.
+    var registersForHitTesting = true
 
     final class Coordinator {
         var player: VRMAPlayer?
@@ -48,6 +54,7 @@ struct CharacterView: NSViewRepresentable {
 
     private func loadCharacter(into view: ARView, coordinator: Coordinator) {
         do {
+            NSLog("DesktopAvatar: displaying character '\(vrmURL.lastPathComponent)'")
             let rawData = try Data(contentsOf: vrmURL)
             let repairedData = VRMCompatibility.makeLoadable(rawData)
             let loader = try VRMEntityLoader(withData: repairedData)
@@ -57,15 +64,16 @@ struct CharacterView: NSViewRepresentable {
             // VRM models' authored "forward" doesn't match our camera side — turn her around.
             vrmEntity.entity.orientation = simd_quatf(angle: .pi, axis: [0, 1, 0])
             view.scene.addAnchor(anchor)
-            CharacterState.shared.arView = view
-            CharacterState.shared.vrmEntity = vrmEntity
+            if registersForHitTesting {
+                CharacterState.shared.arView = view
+                CharacterState.shared.vrmEntity = vrmEntity
+            }
 
             let animation = try VRMAAnimation.load(contentsOf: idleAnimationURL)
             let player = VRMAPlayer(animation: animation, vrmEntity: vrmEntity)
             coordinator.player = player
-            coordinator.cancellable = view.scene.subscribe(to: SceneEvents.Update.self) { [weak coordinator] event in
-                coordinator?.player?.update(deltaTime: Float(event.deltaTime))
-            }
+            // Snap into the idle stance once; no continuous per-frame animation.
+            player.settleIntoRestPose()
         } catch {
             NSLog("DesktopAvatar: failed to load character or animation: \(error)")
         }
